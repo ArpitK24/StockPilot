@@ -1,7 +1,9 @@
 import { and, count, desc, eq, lte, sql } from "drizzle-orm";
 import type { Actor } from "../authz";
+import { startOfDayIn } from "@/lib/timezone";
 import { getDb } from "../db/client";
 import { orders, products, stockMovements, users, type OrderStatus } from "../db/schema";
+import { validationError } from "../errors";
 import { parse } from "../validation/common";
 import { dashboardSchema } from "../validation/schemas";
 import { createdWithin } from "./inventory";
@@ -38,8 +40,13 @@ export async function getDashboard(actor: Actor, query: unknown) {
   const to = parsed.to ?? todayIn(parsed.tz);
   const from = parsed.from ?? addDays(to, -(DEFAULT_RANGE_DAYS - 1));
   const range = { from, to, tz: parsed.tz };
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 >= 366)
+    throw validationError("Choose a range of at most 366 days", { from: "Range too long" });
   const ws = actor.workspaceId;
   const db = getDb();
+  const days: string[] = [];
+  for (let d = from; d <= to && days.length < 366; d = addDays(d, 1)) days.push(d);
+  const buckets = days.map((d) => ({ day: d, s: startOfDayIn(d, range.tz).toISOString(), e: startOfDayIn(addDays(d, 1), range.tz).toISOString() }));
   const inRange = and(eq(orders.workspaceId, ws), ...createdWithin(orders.createdAt, range));
 
   const [productStats, statusRows, valueRow, series, recentOrders, recentMovements] = await Promise.all([
@@ -59,19 +66,13 @@ export async function getDashboard(actor: Actor, query: unknown) {
       })
       .from(orders)
       .where(inRange),
-    // booked value per day, zero-filled, in the viewer's time zone
+    // booked value per day, zero-filled; day bounds computed in the viewer's time zone
     db.execute<{ day: string; value: string; orders: number }>(sql`
-      with days as (
-        select generate_series(${from}::date, ${to}::date, interval '1 day')::date as day
-      )
-      select to_char(d.day, 'YYYY-MM-DD') as day,
+      select d.day,
              coalesce(sum(o.total) filter (where o.status <> 'cancelled'), 0)::numeric(14,2)::text as value,
              count(o.id) filter (where o.status <> 'cancelled')::int as orders
-      from days d
-      left join ${orders} o
-        on o.workspace_id = ${ws}
-       and o.created_at >= d.day::timestamp at time zone ${range.tz}
-       and o.created_at < (d.day + 1)::timestamp at time zone ${range.tz}
+      from jsonb_to_recordset(${JSON.stringify(buckets)}::jsonb) as d(day text, s timestamptz, e timestamptz)
+      left join ${orders} o on o.workspace_id = ${ws} and o.created_at >= d.s and o.created_at < d.e
       group by d.day
       order by d.day`),
     db

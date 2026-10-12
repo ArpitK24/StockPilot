@@ -1,5 +1,7 @@
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Actor } from "../authz";
+import { dayRangeToInstants } from "@/lib/timezone";
 import { getDb, type Tx } from "../db/client";
 import { products, stockMovements, users, type MovementType } from "../db/schema";
 import { AppError, notFound } from "../errors";
@@ -8,10 +10,11 @@ import { adjustStockSchema, movementListSchema } from "../validation/schemas";
 import { requirePermission } from "./products";
 
 /** SQL predicate for a calendar-day range in the caller's time zone (see dateRangeSchema). */
-export function createdWithin(column: SQL | typeof stockMovements.createdAt, range: DateRange): SQL[] {
+export function createdWithin(column: SQL | AnyPgColumn, range: DateRange): SQL[] {
+  const { start, end } = dayRangeToInstants(range);
   const out: SQL[] = [];
-  if (range.from) out.push(sql`${column} >= (${range.from}::date)::timestamp at time zone ${range.tz}`);
-  if (range.to) out.push(sql`${column} < ((${range.to}::date + 1)::timestamp at time zone ${range.tz})`);
+  if (start) out.push(sql`${column} >= ${start.toISOString()}::timestamptz`);
+  if (end) out.push(sql`${column} < ${end.toISOString()}::timestamptz`);
   return out;
 }
 

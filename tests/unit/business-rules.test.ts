@@ -57,3 +57,17 @@ describe("validation", () => {
     expect(createOrderSchema.safeParse({ items: [] }).success).toBe(false);
   });
 });
+
+import { startOfDayIn, dayRangeToInstants } from "@/lib/timezone";
+
+describe("time zone day bounds", () => {
+  it("handles legacy aliases and DST", () => {
+    expect(startOfDayIn("2026-10-12", "Asia/Calcutta").toISOString()).toBe("2026-10-11T18:30:00.000Z");
+    expect(startOfDayIn("2026-10-12", "UTC").toISOString()).toBe("2026-10-12T00:00:00.000Z");
+    // US DST starts 2026-03-08: that day begins at UTC-5, the next at UTC-4
+    expect(startOfDayIn("2026-03-08", "America/New_York").toISOString()).toBe("2026-03-08T05:00:00.000Z");
+    expect(startOfDayIn("2026-03-09", "America/New_York").toISOString()).toBe("2026-03-09T04:00:00.000Z");
+    const r = dayRangeToInstants({ from: "2026-01-01", to: "2026-01-31", tz: "Asia/Kolkata" });
+    expect(r.end!.getTime() - r.start!.getTime()).toBe(31 * 86_400_000);
+  });
+});
