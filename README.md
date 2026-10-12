@@ -2,7 +2,7 @@
 
 Inventory and order management for small businesses. Separate **workspaces** (one per business) manage a product catalogue, record stock adjustments in an append-only ledger, take multi-line orders that reserve stock atomically, and watch it all on a dashboard.
 
-- **Live app:** https://stockpilot-arpit.vercel.app _(see [Demo access](#demo-access))_
+- **Live app:** https://stockpilot-eight-dusky.vercel.app _(see [Demo access](#demo-access))_
 - **Health check:** `GET /api/health`
 - **Stack:** Next.js 15 (App Router) · TypeScript · PostgreSQL (Neon) · Drizzle ORM · Zod · Vitest · Tailwind CSS
 
